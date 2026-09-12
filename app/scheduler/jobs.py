@@ -41,14 +41,19 @@ async def job_check_subscriptions(repo: Repository) -> None:
         sub_end = _coerce_dt(u["subscription_end"])
         first = _coerce_dt(u["first_subscription_at"])
         cur = int(u["level"])
+        try:
+            is_channel_member = await is_subscribed_to_channel(bot, int(u["tg_id"]))
+        except Exception:
+            is_channel_member = False
+
+        if is_channel_member and cur == 0:
+            logger.info("Set initial L1 for active channel member %s", uid)
+            await repo.set_user_level(uid, 1)
+            cur = 1
+
         expired_at = sub_end + timedelta(days=settings.SUBSCRIPTION_GRACE_DAYS) if sub_end else None
         if not sub_end or (expired_at and expired_at < now):
-            keep_level = False
-            if cur > 0:
-                try:
-                    keep_level = await is_subscribed_to_channel(bot, int(u["tg_id"]))
-                except Exception:
-                    keep_level = False
+            keep_level = is_channel_member
             if not keep_level and cur != 0:
                 logger.info("Reset level for user %s: was L%s", uid, cur)
                 await repo.reset_user_level(uid)
