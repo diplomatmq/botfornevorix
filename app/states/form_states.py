@@ -17,6 +17,8 @@ class CreateGiveawayState(StatesGroup):
     prize = State()
     text = State()
     ends_at = State()
+    winners_count = State()
+    prizes = State()
     min_level = State()
     confirm = State()
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Router, F
@@ -52,7 +53,7 @@ async def new_giveaway_cb(callback: CallbackQuery, state: FSMContext, repo: Repo
     await state.clear()
     await state.set_state(CreateGiveawayState.title)
     await callback.message.edit_text(
-        "🎲 <b>Создание розыгрыша (шаг 1/5)</b>\n\nВведите заголовок розыгрыша (можно пропустить — отправьте 0):",
+        "🎲 <b>Создание розыгрыша (шаг 1/6)</b>\n\nВведите заголовок розыгрыша (можно пропустить — отправьте 0):",
         reply_markup=None,
     )
     await callback.answer()
@@ -63,15 +64,8 @@ async def ga_title_step(message: Message, state: FSMContext):
     text = message.text.strip()
     title = None if text == "0" else text[:200]
     await state.update_data(title=title)
-    await state.set_state(CreateGiveawayState.prize)
-    await message.answer("🎁 <b>Шаг 2/5</b>\nВведите название приза (напр. iPhone 16):")
-
-
-@router.message(CreateGiveawayState.prize)
-async def ga_prize_step(message: Message, state: FSMContext):
-    await state.update_data(prize=message.text.strip()[:200])
     await state.set_state(CreateGiveawayState.text)
-    await message.answer("📝 <b>Шаг 3/5</b>\nВведите текст/описание розыгрыша:")
+    await message.answer("📝 <b>Шаг 2/6</b>\nВведите текст/описание розыгрыша:")
 
 
 @router.message(CreateGiveawayState.text)
@@ -79,7 +73,7 @@ async def ga_text_step(message: Message, state: FSMContext):
     await state.update_data(text=message.text.strip()[:2000])
     await state.set_state(CreateGiveawayState.ends_at)
     await message.answer(
-        "⏰ <b>Шаг 4/5</b>\n"
+        "⏰ <b>Шаг 3/6</b>\n"
         "Введите дату и время завершения в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр. 15.10.2026 20:00):"
     )
 
@@ -94,9 +88,47 @@ async def ga_ends_at_step(message: Message, state: FSMContext):
         await message.answer("❌ Дата должна быть в будущем. Попробуйте снова:")
         return
     await state.update_data(ends_at=dt)
+    await state.set_state(CreateGiveawayState.winners_count)
+    await message.answer(
+        "🏆 <b>Шаг 4/6</b>\n"
+        "Введите количество победителей (целое число от 1 до 100):"
+    )
+
+
+@router.message(CreateGiveawayState.winners_count)
+async def ga_winners_count_step(message: Message, state: FSMContext):
+    t = message.text.strip()
+    try:
+        val = int(t)
+    except (TypeError, ValueError):
+        await message.answer("❌ Введите целое число от 1 до 100:")
+        return
+    if not 1 <= val <= 100:
+        await message.answer("❌ Количество победителей должно быть от 1 до 100:")
+        return
+    await state.update_data(winners_count=val, prizes=[])
+    await state.set_state(CreateGiveawayState.prizes)
+    await message.answer("🎁 <b>Шаг 5/6</b>\nВведите приз за 1 место:")
+
+
+@router.message(CreateGiveawayState.prizes)
+async def ga_prizes_step(message: Message, state: FSMContext):
+    prize = message.text.strip()[:500]
+    if not prize:
+        await message.answer("❌ Приз не может быть пустым:")
+        return
+    data = await state.get_data()
+    prizes = list(data.get("prizes") or [])
+    prizes.append(prize)
+    winners_count = int(data["winners_count"])
+    if len(prizes) < winners_count:
+        await state.update_data(prizes=prizes)
+        await message.answer(f"🎁 <b>Шаг 5/6</b>\nВведите приз за {len(prizes) + 1} место:")
+        return
+    await state.update_data(prizes=prizes)
     await state.set_state(CreateGiveawayState.min_level)
     await message.answer(
-        "📊 <b>Шаг 5/5</b>\n"
+        "📊 <b>Шаг 6/6</b>\n"
         "Введите МИНИМАЛЬНЫЙ уровень участников (0 — без ограничения):"
     )
 
@@ -114,12 +146,12 @@ async def ga_min_level_step(message: Message, state: FSMContext):
         return
     min_level = None if val == 0 else val
     data = await state.get_data()
-    data.update(min_level=min_level)
-    await state.update_data(min_level=min_level)
+    prizes = list(data.get("prizes") or [])
+    data.update(min_level=min_level, prizes=prizes)
     preview = {
         "id": None,
         "title": data.get("title"),
-        "prize": data.get("prize"),
+        "prize": "\n".join(f"{index}. {prize}" for index, prize in enumerate(prizes, start=1)),
         "text": data.get("text"),
         "ends_at": data.get("ends_at"),
         "min_level": data.get("min_level"),
@@ -149,11 +181,13 @@ async def ga_confirm_step(message: Message, state: FSMContext, repo: Repository,
     ga_id = await repo.create_giveaway(
         admin_id=uid,
         title=data.get("title"),
-        prize=data.get("prize") or "Приз",
+        prize="\n".join(f"{index}. {prize}" for index, prize in enumerate(data.get("prizes") or [], start=1)),
         text=data.get("text") or "",
         channel_id=channel_id,
         ends_at=data["ends_at"],
         min_level=data.get("min_level"),
+        winners_count=int(data.get("winners_count") or 1),
+        prizes_json=json.dumps(data.get("prizes") or [], ensure_ascii=False),
     )
     ga = await repo.get_giveaway(ga_id)
     try:

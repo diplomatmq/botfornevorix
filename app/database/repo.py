@@ -35,10 +35,22 @@ class Repository:
         await self._migrate_add_wins_column()
         await self._migrate_giveaway_timezones()
         await self._migrate_remove_giveaway_max_level()
+        await self._migrate_giveaway_winners()
         await self._migrate_active_subscription_levels()
         await self.conn.commit()
         from app.database.migration import migrate_legacy_postgres
         await migrate_legacy_postgres(self)
+
+    async def _migrate_giveaway_winners(self) -> None:
+        for column, definition in (
+            ("winners_count", "INTEGER NOT NULL DEFAULT 1"),
+            ("prizes_json", "TEXT"),
+            ("winners_json", "TEXT"),
+        ):
+            try:
+                await self.conn.execute(f"SELECT {column} FROM giveaways LIMIT 1")
+            except Exception:
+                await self.conn.execute(f"ALTER TABLE giveaways ADD COLUMN {column} {definition}")
 
     async def _migrate_active_subscription_levels(self) -> None:
         await self.conn.execute(
@@ -449,13 +461,15 @@ class Repository:
         channel_id: int,
         ends_at: datetime,
         min_level: Optional[int] = None,
+        winners_count: int = 1,
+        prizes_json: Optional[str] = None,
     ) -> int:
         return await self._exec(
             """
-            INSERT INTO giveaways (admin_id, title, prize, text, channel_id, ends_at, min_level, status)
-            VALUES (?,?,?,?,?,?,?, 'active')
+            INSERT INTO giveaways (admin_id, title, prize, text, channel_id, ends_at, min_level, winners_count, prizes_json, status)
+            VALUES (?,?,?,?,?,?,?,?,?, 'active')
             """,
-            (admin_id, title, prize, text, channel_id, ends_at, min_level),
+            (admin_id, title, prize, text, channel_id, ends_at, min_level, winners_count, prizes_json),
         )
 
     async def set_giveaway_channel_msg(self, giveaway_id: int, channel_msg_id: int) -> None:
@@ -471,10 +485,10 @@ class Repository:
             (now,),
         )
 
-    async def finish_giveaway(self, giveaway_id: int, winner_id: Optional[int]) -> None:
+    async def finish_giveaway(self, giveaway_id: int, winner_id: Optional[int], winners_json: Optional[str] = None) -> None:
         await self._exec(
-            "UPDATE giveaways SET winner_id = ?, status = 'ended' WHERE id = ?",
-            (winner_id, giveaway_id),
+            "UPDATE giveaways SET winner_id = ?, winners_json = ?, status = 'ended' WHERE id = ?",
+            (winner_id, winners_json, giveaway_id),
         )
 
     async def get_giveaway(self, giveaway_id: int) -> Optional[aiosqlite.Row]:
