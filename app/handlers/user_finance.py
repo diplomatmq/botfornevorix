@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from aiogram import Bot, Router, F
+from aiogram.filters import StateFilter
 from aiogram.filters.callback_data import CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, LabeledPrice, PreCheckoutQuery
@@ -34,13 +35,9 @@ async def deposit_start(event, repo: Repository, state: FSMContext, bot: Bot):
     await state.set_state("awaiting_stars_amount")
 
 
-@router.message(F.text, F.func(lambda m: m.text.strip().isdigit()))
+@router.message(StateFilter("awaiting_stars_amount"), F.text, F.func(lambda m: m.text.strip().isdigit()))
 async def deposit_amount_stars(message: Message, state: FSMContext, bot: Bot, repo: Repository):
     """Создание инвойса для оплаты звездами"""
-    current_state = await state.get_state()
-    if current_state != "awaiting_stars_amount":
-        return
-    
     amount = int(message.text.strip())
     if amount <= 0:
         await message.answer("❌ Сумма должна быть больше нуля:")
