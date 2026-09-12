@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    container_name: botfornevorix
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./database:/app/database
+      - ./referral_export.dump:/app/referral_export.dump:ro

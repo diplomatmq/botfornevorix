@@ -1,0 +1,25 @@
+# Secrets and local environment
+.env
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Local SQLite runtime files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs and local tooling
+*.log
+.vscode/
+.idea/
+.git/
+.gitignore
+
+# The dump is mounted read-only by docker compose
+referral_export.dump
