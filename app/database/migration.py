@@ -113,8 +113,23 @@ async def _import_rows(repo: Any, rows: dict[str, list[dict[str, Any]]]) -> None
             local = await repo._row("SELECT id FROM users WHERE tg_id = ?", (tg_id,))
             user_ids[int(row["id"])] = int(local["id"])
             await repo.conn.execute(
-                "UPDATE users SET balance=?, subscription_end=?, first_subscription_at=? WHERE id=?",
-                (balances.get(int(row["id"]), 0), subscription_end.get(tg_id), first_subscription.get(tg_id), int(local["id"])),
+                """
+                UPDATE users
+                SET balance=?, subscription_end=?, first_subscription_at=?,
+                    level=CASE WHEN ? IS NOT NULL AND ? > CURRENT_TIMESTAMP THEN 1 ELSE level END,
+                    max_level=CASE WHEN ? IS NOT NULL AND ? > CURRENT_TIMESTAMP THEN 1 ELSE max_level END
+                WHERE id=?
+                """,
+                (
+                    balances.get(int(row["id"]), 0),
+                    subscription_end.get(tg_id),
+                    first_subscription.get(tg_id),
+                    subscription_end.get(tg_id),
+                    subscription_end.get(tg_id),
+                    subscription_end.get(tg_id),
+                    subscription_end.get(tg_id),
+                    int(local["id"]),
+                ),
             )
 
         for row in source_links:

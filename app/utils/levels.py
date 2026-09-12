@@ -24,7 +24,7 @@ def calc_level_from_dates(first_subscription_at: datetime | str | None, subscrip
     total_days = (now - start).days
     if total_days < 0:
         return 0
-    return total_days // 30
+    return max(1, total_days // 30)
 
 
 def get_level_weight(level: int) -> int:

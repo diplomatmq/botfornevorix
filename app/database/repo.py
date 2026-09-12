@@ -33,9 +33,21 @@ class Repository:
         await self._migrate_add_wins_column()
         await self._migrate_giveaway_timezones()
         await self._migrate_remove_giveaway_max_level()
+        await self._migrate_active_subscription_levels()
         await self.conn.commit()
         from app.database.migration import migrate_legacy_postgres
         await migrate_legacy_postgres(self)
+
+    async def _migrate_active_subscription_levels(self) -> None:
+        await self.conn.execute(
+            """
+            UPDATE users
+            SET level = CASE WHEN level < 1 THEN 1 ELSE level END,
+                max_level = CASE WHEN max_level < 1 THEN 1 ELSE max_level END
+            WHERE subscription_end IS NOT NULL
+              AND subscription_end > CURRENT_TIMESTAMP
+            """
+        )
 
     async def _migrate_add_wins_column(self) -> None:
         try:
@@ -175,7 +187,9 @@ class Repository:
             """
             UPDATE users
             SET subscription_end = ?,
-                first_subscription_at = COALESCE(first_subscription_at, ?)
+                first_subscription_at = COALESCE(first_subscription_at, ?),
+                level = CASE WHEN level < 1 THEN 1 ELSE level END,
+                max_level = CASE WHEN max_level < 1 THEN 1 ELSE max_level END
             WHERE id = ?
             """,
             (end, now, user_id),
@@ -242,7 +256,7 @@ class Repository:
     async def get_referral_by_id(self, referral_id: int) -> Optional[aiosqlite.Row]:
         return await self._row("SELECT * FROM referrals WHERE id = ?", (referral_id,))
 
-    async def top_referrers(self, limit: int = 20) -> list[aiosqlite.Row]:
+    async def top_referrers(self, limit: int = 10) -> list[aiosqlite.Row]:
         return await self._rows(
             """
             SELECT u.id, u.tg_id, u.username, u.full_name, u.level,

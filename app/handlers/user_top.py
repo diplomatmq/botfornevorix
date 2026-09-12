@@ -13,7 +13,7 @@ router = Router()
 @router.message(F.text == "🏆 Топ рефоводов")
 async def top_referrers(message: Message, repo: Repository):
     await ensure_user(repo, message)
-    rows = await repo.top_referrers(limit=30)
+    rows = await repo.top_referrers(limit=10)
     if not rows:
         await message.answer("🏆 Пока ни у кого нет рефералов.")
         return
