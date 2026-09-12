@@ -7,7 +7,7 @@ from aiogram.types import ChatMemberUpdated, Message
 
 from app.config import settings
 from app.database.repo import Repository
-from app.handlers.common import check_referral_renewal, clear_state, ensure_user, handle_referral_invite
+from app.handlers.common import clear_state, ensure_user, handle_referral_invite
 from app.keyboards.user_kb import main_menu
 
 router = Router()
@@ -41,7 +41,6 @@ def _is_admin(user_id: int) -> bool:
 async def cmd_start(message: Message, state: FSMContext, repo: Repository, bot: Bot):
     await clear_state(state)
     user_db_id = await ensure_user(repo, message)
-    await check_referral_renewal(repo, user_db_id)
     u = await repo.get_user_by_id(user_db_id)
     refs_count = await repo.get_referral_count_by_owner(user_db_id)
     await message.answer(

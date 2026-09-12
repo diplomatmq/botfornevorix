@@ -7,7 +7,6 @@ from aiogram.types import Message
 from app.config import settings
 from app.database.repo import Repository
 from app.loader import bot as default_bot
-from app.utils.subscription import check_and_renew_from_channel
 
 
 async def ensure_user(repo: Repository, message: Message) -> int:
@@ -68,26 +67,8 @@ async def handle_referral_invite(
     )
     existing_ref = await repo.get_referral_by_referee(user_db_id)
     if existing_ref:
-        return await check_and_renew_from_channel(repo, user_db_id, default_bot)
-    await _attach_referral(repo, user_db_id, link)
-    return True
-
-
-async def check_referral_renewal(repo: Repository, user_db_id: int) -> bool:
-    renewed = await check_and_renew_from_channel(repo, user_db_id, default_bot)
-    if not renewed:
         return False
-    ref = await repo.get_referral_by_referee(user_db_id)
-    if ref:
-        try:
-            owner = await repo.get_user_by_id(int(ref["owner_id"]))
-            if owner:
-                await default_bot.send_message(
-                    chat_id=int(owner["tg_id"]),
-                    text=f"🎁 +{settings.RENEWAL_BONUS} ⭐ за продление подписки рефералом!",
-                )
-        except Exception:
-            pass
+    await _attach_referral(repo, user_db_id, link)
     return True
 
 

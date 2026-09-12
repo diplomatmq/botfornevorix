@@ -137,7 +137,11 @@ CREATE TABLE IF NOT EXISTS migration_state (
     completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS migration_state (
-    name TEXT PRIMARY KEY,
-    completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS channel_subscription_updates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    subscription_end DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, subscription_end),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

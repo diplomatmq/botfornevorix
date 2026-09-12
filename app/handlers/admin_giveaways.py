@@ -104,10 +104,14 @@ async def ga_ends_at_step(message: Message, state: FSMContext):
 @router.message(CreateGiveawayState.min_level)
 async def ga_min_level_step(message: Message, state: FSMContext):
     t = message.text.strip()
-    if not t.isdigit():
+    try:
+        val = int(t)
+    except (TypeError, ValueError):
         await message.answer("❌ Введите целое число (0 = без ограничения):")
         return
-    val = int(t)
+    if val < 0:
+        await message.answer("❌ Уровень не может быть отрицательным:")
+        return
     min_level = None if val == 0 else val
     data = await state.get_data()
     data.update(min_level=min_level)

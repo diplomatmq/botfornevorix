@@ -74,7 +74,7 @@ async def successful_payment_handler(message: Message, repo: Repository, bot: Bo
     """Обработка успешного платежа"""
     payment = message.successful_payment
     payload = payment.invoice_payload
-    
+
     # Парсим payload: "deposit_{uid}_{amount}"
     try:
         parts = payload.split("_")

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
 import aiosqlite
+
+from app.config import settings
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
@@ -194,6 +196,52 @@ class Repository:
             """,
             (end, now, user_id),
         )
+
+    async def apply_channel_subscription_end(self, user_id: int, new_end: datetime) -> bool:
+        user = await self.get_user_by_id(user_id)
+        if not user:
+            return False
+        current_end = user["subscription_end"]
+        if isinstance(current_end, str):
+            try:
+                current_end = datetime.fromisoformat(current_end)
+            except ValueError:
+                current_end = None
+        if current_end and new_end <= current_end:
+            return False
+
+        now = datetime.utcnow()
+        on_time = current_end is not None and now <= current_end + timedelta(days=2)
+        ref = await self.get_referral_by_referee(user_id)
+        async with self.conn.cursor() as cur:
+            await cur.execute("BEGIN")
+            try:
+                await cur.execute(
+                    "INSERT OR IGNORE INTO channel_subscription_updates (user_id, subscription_end) VALUES (?,?)",
+                    (user_id, new_end),
+                )
+                if cur.rowcount != 1:
+                    await self.conn.rollback()
+                    return False
+                await cur.execute(
+                    "UPDATE users SET subscription_end = ?, first_subscription_at = COALESCE(first_subscription_at, ?) WHERE id = ?",
+                    (new_end, now, user_id),
+                )
+                if ref and on_time:
+                    owner_id = int(ref["owner_id"])
+                    await cur.execute(
+                        "UPDATE users SET balance = balance + ? WHERE id = ?",
+                        (settings.RENEWAL_BONUS, owner_id),
+                    )
+                    await cur.execute(
+                        "INSERT INTO transactions (user_id, amount, type, related_id) VALUES (?,?,?,?)",
+                        (owner_id, settings.RENEWAL_BONUS, TXN_RENEWAL_BONUS, user_id),
+                    )
+                await self.conn.commit()
+            except Exception:
+                await self.conn.rollback()
+                raise
+        return True
 
     async def get_all_users(self) -> list[aiosqlite.Row]:
         return await self._rows("SELECT * FROM users")
