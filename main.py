@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from aiogram.exceptions import TelegramNetworkError
+
 from app.config import settings
 from app.database.repo import Repository
 from app.handlers import register_routers
@@ -52,14 +54,20 @@ async def main() -> None:
     scheduler.start()
     logger.info("Scheduler started")
 
+    asyncio.create_task(_run_startup_jobs(repo))
     try:
-        logger.info("Starting polling...")
-        await bot.delete_webhook(drop_pending_updates=True)
-        asyncio.create_task(_run_startup_jobs(repo))
-        await dp.start_polling(bot)
+        while True:
+            try:
+                logger.info("Starting polling...")
+                await bot.delete_webhook(drop_pending_updates=True)
+                await dp.start_polling(bot)
+            except (TelegramNetworkError, asyncio.TimeoutError, OSError) as e:
+                logger.error("Telegram connection failed: %s. Retry in 10 seconds", e)
+                await asyncio.sleep(10)
     finally:
         scheduler.shutdown(wait=False)
         await close_db()
+        await bot.session.close()
         logger.info("Bot stopped")
 
 
