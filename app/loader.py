@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import sqlite3
 import sys
 from pathlib import Path
@@ -61,11 +62,14 @@ async def ensure_generic_invite_link(bot_instance: Bot) -> str:
     if not settings.CHANNEL_ID:
         return ""
     try:
-        invite = await bot_instance.create_chat_subscription_invite_link(
-            chat_id=settings.CHANNEL_ID,
-            name="bot_generic_subscription",
-            subscription_period=2592000,
-            subscription_price=settings.REF_LINK_COST,
+        invite = await asyncio.wait_for(
+            bot_instance.create_chat_subscription_invite_link(
+                chat_id=settings.CHANNEL_ID,
+                name="bot_generic_subscription",
+                subscription_period=2592000,
+                subscription_price=settings.REF_LINK_COST,
+            ),
+            timeout=10,
         )
         generic_invite_link = invite.invite_link
         logger.info("Generic subscription invite link ready")
@@ -79,7 +83,10 @@ async def get_channel_member(bot_instance: Bot, user_id: int):
     if not settings.CHANNEL_ID:
         return None
     try:
-        return await bot_instance.get_chat_member(settings.CHANNEL_ID, user_id)
+        return await asyncio.wait_for(
+            bot_instance.get_chat_member(settings.CHANNEL_ID, user_id),
+            timeout=5,
+        )
     except Exception:
         return None
 
