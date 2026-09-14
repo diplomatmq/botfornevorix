@@ -12,9 +12,9 @@ from app.database.repo import Repository
 from app.handlers.common import ensure_user, clear_state
 from app.keyboards.admin_kb import admin_menu, giveaway_admin_menu, GiveawayCallback
 from app.middlewares.acl import IsAdmin
-from app.states.form_states import CreateGiveawayState
+from app.states.form_states import CreateGiveawayState, GiveawayActionState
 from app.utils.formatters import format_datetime
-from app.utils.giveaways import build_giveaway_post
+from app.utils.giveaways import build_giveaway_post, run_giveaway
 
 router = Router()
 router.message.filter(IsAdmin())
@@ -45,6 +45,97 @@ async def giveaway_menu_msg(message: Message, state: FSMContext, repo: Repositor
     await ensure_user(repo, message)
     await clear_state(state)
     await message.answer("🎲 Управление розыгрышами:", reply_markup=giveaway_admin_menu())
+
+
+def _active_giveaways_text(giveaways) -> str:
+    lines = ["🎲 Идущие конкурсы:\n"]
+    for giveaway in giveaways:
+        title = giveaway["title"] or "Без названия"
+        lines.append(
+            f"#{giveaway['id']} — {title}\n"
+            f"Завершение: {format_datetime(giveaway['ends_at'])}"
+        )
+    return "\n\n".join(lines)
+
+
+@router.callback_query(GiveawayCallback.filter(F.action == "cancel_menu"))
+async def cancel_giveaway_menu_cb(callback: CallbackQuery, state: FSMContext, repo: Repository):
+    giveaways = await repo.get_active_giveaways()
+    if not giveaways:
+        await callback.answer("Нет активных конкурсов", show_alert=True)
+        return
+    await state.clear()
+    await state.set_state(GiveawayActionState.cancel_id)
+    await callback.message.answer(
+        _active_giveaways_text(giveaways)
+        + "\n\nВведите номер конкурса для отмены:"
+    )
+    await callback.answer()
+
+
+@router.callback_query(GiveawayCallback.filter(F.action == "finish_menu"))
+async def finish_giveaway_menu_cb(callback: CallbackQuery, state: FSMContext, repo: Repository):
+    giveaways = await repo.get_active_giveaways()
+    if not giveaways:
+        await callback.answer("Нет активных конкурсов", show_alert=True)
+        return
+    await state.clear()
+    await state.set_state(GiveawayActionState.finish_id)
+    await callback.message.answer(
+        _active_giveaways_text(giveaways)
+        + "\n\nВведите номер конкурса для досрочного завершения:"
+    )
+    await callback.answer()
+
+
+@router.message(GiveawayActionState.cancel_id)
+async def cancel_giveaway_step(message: Message, state: FSMContext, repo: Repository, bot: Bot):
+    try:
+        giveaway_id = int(message.text.strip())
+    except (TypeError, ValueError):
+        await message.answer("❌ Введите номер конкурса из списка:")
+        return
+    giveaway = await repo.get_giveaway(giveaway_id)
+    if not giveaway or giveaway["status"] != "active":
+        await message.answer("❌ Активный конкурс с таким номером не найден:")
+        return
+    if not await repo.cancel_giveaway(giveaway_id):
+        await message.answer("❌ Конкурс уже обрабатывается или завершён.")
+        await state.clear()
+        return
+    if giveaway["channel_id"] and giveaway["channel_msg_id"]:
+        try:
+            await bot.edit_message_text(
+                chat_id=int(giveaway["channel_id"]),
+                message_id=int(giveaway["channel_msg_id"]),
+                text=(
+                    f"❌ <b>Розыгрыш #{giveaway_id} отменён.</b>\n\n"
+                    "Победители не определялись."
+                ),
+            )
+        except Exception:
+            pass
+    await state.clear()
+    await message.answer(f"✅ Конкурс #{giveaway_id} отменён.", reply_markup=admin_menu())
+
+
+@router.message(GiveawayActionState.finish_id)
+async def finish_giveaway_step(message: Message, state: FSMContext, repo: Repository, bot: Bot):
+    try:
+        giveaway_id = int(message.text.strip())
+    except (TypeError, ValueError):
+        await message.answer("❌ Введите номер конкурса из списка:")
+        return
+    giveaway = await repo.get_giveaway(giveaway_id)
+    if not giveaway or giveaway["status"] != "active":
+        await message.answer("❌ Активный конкурс с таким номером не найден:")
+        return
+    await run_giveaway(repo, bot, giveaway, now=datetime.utcnow())
+    await state.clear()
+    await message.answer(
+        f"✅ Конкурс #{giveaway_id} завершён досрочно. Победители определены.",
+        reply_markup=admin_menu(),
+    )
 
 
 @router.callback_query(GiveawayCallback.filter(F.action == "new"))
@@ -110,28 +201,19 @@ async def ga_winners_count_step(message: Message, state: FSMContext):
     await state.set_state(CreateGiveawayState.prizes)
     await message.answer(
         "🎁 <b>Шаг 5/6</b>\n"
-        f"Введите приз за 1 место (всего мест: {val}).\n"
-        "Каждый следующий приз отправляйте отдельным сообщением."
+        "Введите текст приза одним сообщением.\n"
+        "Можно указать один общий текст или несколько призов через перенос строки.\n"
+        f"Количество победителей останется: {val}."
     )
 
 
 @router.message(CreateGiveawayState.prizes)
 async def ga_prizes_step(message: Message, state: FSMContext):
-    prize = message.text.strip()[:500]
-    if not prize:
+    prizes = [line.strip()[:500] for line in message.text.splitlines() if line.strip()]
+    if not prizes:
         await message.answer("❌ Приз не может быть пустым:")
         return
     data = await state.get_data()
-    prizes = list(data.get("prizes") or [])
-    prizes.append(prize)
-    winners_count = int(data["winners_count"])
-    if len(prizes) < winners_count:
-        await state.update_data(prizes=prizes)
-        await message.answer(
-            "🎁 <b>Шаг 5/6</b>\n"
-            f"Приз №{len(prizes)} сохранён. Введите приз за {len(prizes) + 1} место:"
-        )
-        return
     await state.update_data(prizes=prizes)
     await state.set_state(CreateGiveawayState.min_level)
     await message.answer(

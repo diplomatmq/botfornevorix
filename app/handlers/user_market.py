@@ -163,7 +163,7 @@ async def buy_lot_cb(callback: CallbackQuery, callback_data: MarketCallback, rep
 
 @router.callback_query(MarketCallback.filter(F.action == "create_lot"))
 async def create_lot_start_cb(callback: CallbackQuery, repo: Repository, state: FSMContext):
-    uid = await ensure_user(repo, callback.message)
+    uid = await ensure_user(repo, callback)
     refs = await repo.get_referrals_by_owner(uid, include_on_market=False)
     if not refs:
         await callback.answer(

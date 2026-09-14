@@ -23,6 +23,11 @@ class CreateGiveawayState(StatesGroup):
     confirm = State()
 
 
+class GiveawayActionState(StatesGroup):
+    cancel_id = State()
+    finish_id = State()
+
+
 class DepositRequestState(StatesGroup):
     amount = State()
     screenshot = State()

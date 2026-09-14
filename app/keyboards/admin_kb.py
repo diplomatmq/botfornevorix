@@ -44,5 +44,7 @@ class GiveawayCallback(CallbackData, prefix="ga"):
 def giveaway_admin_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🆕 Создать новый розыгрыш", callback_data=GiveawayCallback(action="new").pack())
+    builder.button(text="❌ Отменить конкурс", callback_data=GiveawayCallback(action="cancel_menu").pack())
+    builder.button(text="⏩ Закончить досрочно", callback_data=GiveawayCallback(action="finish_menu").pack())
     builder.adjust(1)
     return builder.as_markup()

@@ -497,6 +497,19 @@ class Repository:
             (now,),
         )
 
+    async def get_active_giveaways(self) -> list[aiosqlite.Row]:
+        return await self._rows(
+            "SELECT * FROM giveaways WHERE status = 'active' ORDER BY id"
+        )
+
+    async def cancel_giveaway(self, giveaway_id: int) -> bool:
+        cursor = await self.conn.execute(
+            "UPDATE giveaways SET status = 'cancelled' WHERE id = ? AND status = 'active'",
+            (giveaway_id,),
+        )
+        await self.conn.commit()
+        return cursor.rowcount == 1
+
     async def claim_giveaway(self, giveaway_id: int) -> bool:
         cursor = await self.conn.execute(
             "UPDATE giveaways SET status = 'processing' WHERE id = ? AND status = 'active'",

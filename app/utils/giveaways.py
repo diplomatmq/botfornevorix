@@ -14,6 +14,13 @@ from app.utils.levels import weighted_pick_users
 logger = logging.getLogger(__name__)
 
 
+def _giveaway_post_link(channel_id: int, message_id: int) -> str:
+    channel_id = int(channel_id)
+    if channel_id < -1000000000000:
+        return f"https://t.me/c/{abs(channel_id) - 1000000000000}/{message_id}"
+    return f"https://t.me/{channel_id}/{message_id}"
+
+
 def build_giveaway_post(ga) -> str:
     parts = []
     if ga["title"]:
@@ -189,14 +196,14 @@ async def run_giveaway(
             if current_winner:
                 winners.append(current_winner)
             if current_winner and current_winner["tg_id"]:
-                prize = prizes[index] if index < len(prizes) else prizes[-1]
+                post_link = _giveaway_post_link(ga["channel_id"], ga["channel_msg_id"])
                 try:
                     await bot.send_message(
                         chat_id=int(current_winner["tg_id"]),
                         text=(
-                            f"🎉 Поздравляем! Вы заняли {index + 1} место в розыгрыше #{ga['id']}!\n"
-                            f"Приз: <b>{prize}</b>\n\n"
-                            "Свяжитесь с администратором для получения приза."
+                            f"🎉 Поздравляем! Вы выиграли в розыгрыше #{ga['id']} "
+                            f"и заняли {index + 1} место!\n\n"
+                            f"Пост розыгрыша: {post_link}"
                         ),
                     )
                     logger.info("Giveaway #%s: notified winner %s", ga["id"], current_winner["tg_id"])
