@@ -110,7 +110,7 @@ async def withdraw_start(event, repo: Repository, state: FSMContext):
     await state.set_state(WithdrawRequestState.amount)
     await message.answer(
         f"💸 Заявка на вывод\nДоступный баланс: {format_stars(int(u['balance']))}\n\n"
-        "Введите сумму к выводу:",
+        "Введите сумму к выводу (минимум 100 ⭐):",
         reply_markup=back_to_menu(),
     )
 
@@ -124,6 +124,9 @@ async def withdraw_amount_step(message: Message, state: FSMContext, repo: Reposi
         await message.answer("❌ Введите сумму целым числом больше нуля:")
         return
     amount = int(t)
+    if amount < 100:
+        await message.answer("❌ Минимальная сумма вывода — 100 ⭐:")
+        return
     if amount > int(u["balance"]):
         await message.answer(f"❌ Недостаточно средств. Баланс {format_stars(int(u['balance']))}:")
         return
