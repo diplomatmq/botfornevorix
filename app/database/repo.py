@@ -37,6 +37,7 @@ class Repository:
         await self._migrate_remove_giveaway_max_level()
         await self._migrate_giveaway_winners()
         await self._migrate_active_subscription_levels()
+        await self._migrate_referral_market_flags()
         await self.conn.commit()
         from app.database.migration import migrate_legacy_postgres
         await migrate_legacy_postgres(self)
@@ -61,6 +62,11 @@ class Repository:
             WHERE subscription_end IS NOT NULL
               AND subscription_end > CURRENT_TIMESTAMP
             """
+        )
+
+    async def _migrate_referral_market_flags(self) -> None:
+        await self.conn.execute(
+            "UPDATE referrals SET on_market = 0 WHERE on_market IS NULL"
         )
 
     async def _migrate_add_wins_column(self) -> None:
@@ -291,7 +297,7 @@ class Repository:
         )
 
     async def get_referrals_by_owner(self, owner_id: int, include_on_market: bool = True) -> list[aiosqlite.Row]:
-        extra = "" if include_on_market else "AND r.on_market = 0"
+        extra = "" if include_on_market else "AND COALESCE(r.on_market, 0) = 0"
         return await self._rows(
             f"""
             SELECT r.id AS ref_id, r.on_market, r.lot_id, u.*
@@ -359,10 +365,16 @@ class Repository:
                         "INSERT INTO market_lot_items (lot_id, referral_id) VALUES (?,?)",
                         (lot_id, ref_id),
                     )
-                    await cur.execute(
-                        "UPDATE referrals SET on_market = 1, lot_id = ? WHERE id = ?",
-                        (lot_id, ref_id),
+                    cursor = await cur.execute(
+                        """
+                        UPDATE referrals
+                        SET on_market = 1, lot_id = ?
+                        WHERE id = ? AND owner_id = ? AND COALESCE(on_market, 0) = 0
+                        """,
+                        (lot_id, ref_id, seller_id),
                     )
+                    if cursor.rowcount != 1:
+                        raise ValueError("Реферал уже выставлен на продажу или вам не принадлежит")
                 await self.conn.commit()
                 return lot_id
             except Exception:
@@ -485,9 +497,17 @@ class Repository:
             (now,),
         )
 
+    async def claim_giveaway(self, giveaway_id: int) -> bool:
+        cursor = await self.conn.execute(
+            "UPDATE giveaways SET status = 'processing' WHERE id = ? AND status = 'active'",
+            (giveaway_id,),
+        )
+        await self.conn.commit()
+        return cursor.rowcount == 1
+
     async def finish_giveaway(self, giveaway_id: int, winner_id: Optional[int], winners_json: Optional[str] = None) -> None:
         await self._exec(
-            "UPDATE giveaways SET winner_id = ?, winners_json = ?, status = 'ended' WHERE id = ?",
+            "UPDATE giveaways SET winner_id = ?, winners_json = ?, status = 'ended' WHERE id = ? AND status = 'processing'",
             (winner_id, winners_json, giveaway_id),
         )
 

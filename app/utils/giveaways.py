@@ -148,6 +148,9 @@ async def run_giveaway(
     ga,
     now: datetime | None = None,
 ) -> tuple[int | None, str | None]:
+    if not await repo.claim_giveaway(int(ga["id"])):
+        logger.info("Giveaway #%s was already claimed for finishing", ga["id"])
+        return None, None
     now = now or datetime.utcnow()
     min_level = ga["min_level"]
     eligible = []

@@ -108,7 +108,11 @@ async def ga_winners_count_step(message: Message, state: FSMContext):
         return
     await state.update_data(winners_count=val, prizes=[])
     await state.set_state(CreateGiveawayState.prizes)
-    await message.answer("🎁 <b>Шаг 5/6</b>\nВведите приз за 1 место:")
+    await message.answer(
+        "🎁 <b>Шаг 5/6</b>\n"
+        f"Введите приз за 1 место (всего мест: {val}).\n"
+        "Каждый следующий приз отправляйте отдельным сообщением."
+    )
 
 
 @router.message(CreateGiveawayState.prizes)
@@ -123,7 +127,10 @@ async def ga_prizes_step(message: Message, state: FSMContext):
     winners_count = int(data["winners_count"])
     if len(prizes) < winners_count:
         await state.update_data(prizes=prizes)
-        await message.answer(f"🎁 <b>Шаг 5/6</b>\nВведите приз за {len(prizes) + 1} место:")
+        await message.answer(
+            "🎁 <b>Шаг 5/6</b>\n"
+            f"Приз №{len(prizes)} сохранён. Введите приз за {len(prizes) + 1} место:"
+        )
         return
     await state.update_data(prizes=prizes)
     await state.set_state(CreateGiveawayState.min_level)
