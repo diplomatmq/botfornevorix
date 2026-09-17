@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from aiogram import Bot, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -257,7 +259,10 @@ async def lot_count_step(message: Message, state: FSMContext):
     if count <= 0 or count > len(available):
         await message.answer(f"❌ Введите число от 1 до {len(available)}:")
         return
-    await state.update_data(count=count)
+    await state.update_data(
+        count=count,
+        chosen_ref_ids=[int(ref["ref_id"]) for ref in available[:count]],
+    )
     await state.set_state(CreateLotState.price)
     await message.answer("💸 Введите цену за 1 реферала (звёзд):")
 
@@ -303,7 +308,8 @@ async def lot_price_step(message: Message, state: FSMContext, repo: Repository):
 @router.message(CreateLotState.confirm)
 async def lot_confirm_step(message: Message, state: FSMContext, repo: Repository):
     text = " ".join((message.text or "").split()).casefold()
-    if text != "да":
+    confirmation_words = re.findall(r"[а-яё]+", text)
+    if "да" not in confirmation_words:
         await state.clear()
         await message.answer("❌ Создание лота отменено.", reply_markup=back_to_menu())
         return
