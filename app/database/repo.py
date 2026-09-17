@@ -387,7 +387,6 @@ class Repository:
                 (seller_id, count, price_per_one, total, level_min, level_max),
             )
         )
-        stmts.append(("SELECT last_insert_rowid() AS lid", ()))
         async with self.conn.cursor() as cur:
             await cur.execute("BEGIN")
             try:
@@ -404,8 +403,9 @@ class Repository:
                     if int(ref_row["on_market"] or 0):
                         raise ValueError("Один из выбранных рефералов уже находится на продаже")
                 await cur.execute(stmts[0][0], stmts[0][1])
-                rid_row = await cur.fetchone()
-                lot_id = int(rid_row["lid"]) if rid_row else 0
+                lot_id = int(cur.lastrowid or 0)
+                if not lot_id:
+                    raise RuntimeError("Не удалось получить ID созданного лота")
                 for ref_id in referral_ids:
                     await cur.execute(
                         "INSERT INTO market_lot_items (lot_id, referral_id) VALUES (?,?)",
