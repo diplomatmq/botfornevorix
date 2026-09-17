@@ -128,13 +128,13 @@ def active_lots_kb(lots_with_refs, page: int = 0) -> InlineKeyboardMarkup:
     
     # Каждый реферал — отдельная кнопка
     for item in lots_with_refs:
-        ref_name = item.get("full_name", "Пользователь")
-        username = item.get("username", "")
+        ref_name = item["full_name"] or "Пользователь"
+        username = item["username"] or ""
         if username:
             ref_name = f"@{username}"
-        level = item.get("level", 0)
-        price = item.get("price_per_one", 0)
-        ref_id = item.get("ref_row_id")
+        level = item["level"] or 0
+        price = item["price_per_one"] or 0
+        ref_id = item["ref_row_id"]
         
         builder.button(
             text=f"{ref_name} · L{level} · {price}⭐",

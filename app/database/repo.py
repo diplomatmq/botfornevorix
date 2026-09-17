@@ -706,7 +706,7 @@ class Repository:
         return await self._row(
             """
             SELECT mli.*, r.id AS ref_row_id, r.owner_id AS seller_id, r.referee_id,
-                   u.tg_id, u.username, u.full_name, u.level,
+                   u.tg_id, u.username, u.full_name, u.level, u.subscription_end,
                    ml.price_per_one, ml.id AS lot_id, ml.seller_id AS lot_seller_id, ml.status AS lot_status
             FROM market_lot_items mli
             JOIN referrals r ON r.id = mli.referral_id
