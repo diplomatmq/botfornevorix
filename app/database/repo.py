@@ -391,6 +391,18 @@ class Repository:
         async with self.conn.cursor() as cur:
             await cur.execute("BEGIN")
             try:
+                if len(referral_ids) != count or len(set(referral_ids)) != count:
+                    raise ValueError("Количество выбранных рефералов не совпадает с данными лота")
+                for ref_id in referral_ids:
+                    ref = await cur.execute(
+                        "SELECT id, on_market FROM referrals WHERE id = ? AND owner_id = ?",
+                        (ref_id, seller_id),
+                    )
+                    ref_row = await ref.fetchone()
+                    if not ref_row:
+                        raise ValueError("Выбранный реферал не найден или уже вам не принадлежит")
+                    if int(ref_row["on_market"] or 0):
+                        raise ValueError("Один из выбранных рефералов уже находится на продаже")
                 await cur.execute(stmts[0][0], stmts[0][1])
                 rid_row = await cur.fetchone()
                 lot_id = int(rid_row["lid"]) if rid_row else 0

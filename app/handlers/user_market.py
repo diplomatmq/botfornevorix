@@ -324,7 +324,24 @@ async def lot_confirm_step(message: Message, state: FSMContext, repo: Repository
         await state.clear()
         await message.answer("❌ Ошибка данных лота.", reply_markup=back_to_menu())
         return
-    lot_id = await repo.create_market_lot(uid, count, price, ref_ids, level_min=lmin, level_max=lmax)
+    try:
+        lot_id = await repo.create_market_lot(
+            uid, count, price, ref_ids, level_min=lmin, level_max=lmax
+        )
+    except ValueError as exc:
+        await state.clear()
+        await message.answer(
+            f"❌ Лот не создан: {exc}\nНачните выставление заново.",
+            reply_markup=back_to_menu(),
+        )
+        return
+    except Exception:
+        await state.clear()
+        await message.answer(
+            "❌ Не удалось создать лот. Начните выставление заново.",
+            reply_markup=back_to_menu(),
+        )
+        raise
     await state.clear()
     await message.answer(
         f"✅ Лот #{lot_id} создан.\n"
