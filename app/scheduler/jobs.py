@@ -7,6 +7,7 @@ from aiogram import Bot
 
 from app.database.repo import Repository
 from app.utils.giveaways import run_giveaway
+from app.utils.formatters import format_user_name
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,17 @@ async def job_check_subscriptions(repo: Repository) -> None:
             member = await get_channel_member(bot, int(user["tg_id"]))
             channel_end = _coerce_dt(getattr(member, "until_date", None)) if member else None
             if channel_end and await repo.apply_channel_subscription_end(int(user["id"]), channel_end):
+                referral = await repo.get_referral_by_referee(int(user["id"]))
+                if referral:
+                    owner = await repo.get_user_by_id(int(referral["owner_id"]))
+                    if owner:
+                        await bot.send_message(
+                            chat_id=int(owner["tg_id"]),
+                            text=(
+                                f"🔁 {format_user_name(user)} продлил подписку.\n"
+                                f"Вам начислено {settings.RENEWAL_BONUS} ⭐."
+                            ),
+                        )
                 logger.info("Recorded channel subscription update for user %s", user["id"])
         except Exception:
             logger.exception("Failed to check channel subscription for user %s", user["id"])

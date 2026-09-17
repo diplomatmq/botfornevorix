@@ -22,7 +22,7 @@ async def set_level_start(message: Message, state: FSMContext, repo: Repository)
     await clear_state(state)
     await state.set_state(AdminSetLevelState.user_identifier)
     await message.answer(
-        "🎯 Введите ID пользователя (tg_id или id из базы) или @username:"
+        "🎯 Введите @username пользователя:"
     )
 
 

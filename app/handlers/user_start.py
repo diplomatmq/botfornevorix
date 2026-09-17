@@ -45,7 +45,6 @@ async def cmd_start(message: Message, state: FSMContext, repo: Repository, bot: 
     refs_count = await repo.get_referral_count_by_owner(user_db_id)
     await message.answer(
         "👋 Добро пожаловать!\n\n"
-        f"Ваш ID: {u['tg_id']}\n"
         f"Рефералов приглашено: {refs_count}\n"
         f"Баланс: {u['balance']} ⭐\n\n"
         "Выберите пункт в меню ниже:",

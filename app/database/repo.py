@@ -248,6 +248,10 @@ class Repository:
                 if ref and on_time:
                     owner_id = int(ref["owner_id"])
                     await cur.execute(
+                        "UPDATE users SET level = level + 1, max_level = MAX(max_level, level + 1) WHERE id = ?",
+                        (user_id,),
+                    )
+                    await cur.execute(
                         "UPDATE users SET balance = balance + ? WHERE id = ?",
                         (settings.RENEWAL_BONUS, owner_id),
                     )
@@ -263,6 +267,36 @@ class Repository:
 
     async def get_all_users(self) -> list[aiosqlite.Row]:
         return await self._rows("SELECT * FROM users")
+
+    async def get_users_by_level(self, level: int) -> list[aiosqlite.Row]:
+        return await self._rows(
+            "SELECT * FROM users WHERE level = ? ORDER BY full_name COLLATE NOCASE",
+            (level,),
+        )
+
+    async def get_recent_subscriptions(self, limit: int = 10) -> list[aiosqlite.Row]:
+        return await self._rows(
+            "SELECT * FROM users WHERE first_subscription_at IS NOT NULL "
+            "ORDER BY first_subscription_at DESC LIMIT ?",
+            (limit,),
+        )
+
+    async def get_recent_renewals(self, limit: int = 10) -> list[aiosqlite.Row]:
+        return await self._rows(
+            "SELECT t.created_at, t.amount, t.related_id, u.full_name, u.username "
+            "FROM transactions t JOIN users u ON u.id = t.related_id "
+            "WHERE t.type = ? ORDER BY t.created_at DESC LIMIT ?",
+            (TXN_RENEWAL_BONUS, limit),
+        )
+
+    async def get_renewals_by_owner(self, owner_id: int, limit: int = 30) -> list[aiosqlite.Row]:
+        return await self._rows(
+            "SELECT t.created_at, t.amount, u.full_name, u.username "
+            "FROM transactions t JOIN users u ON u.id = t.related_id "
+            "JOIN referrals r ON r.referee_id = t.related_id "
+            "WHERE t.type = ? AND r.owner_id = ? ORDER BY t.created_at DESC LIMIT ?",
+            (TXN_RENEWAL_BONUS, owner_id, limit),
+        )
 
     async def create_referral_link(
         self, owner_id: int, code: str, chat_id: int, invite_link: str
@@ -286,7 +320,7 @@ class Repository:
 
     async def get_link_by_invite_link(self, invite_link: str) -> Optional[aiosqlite.Row]:
         return await self._row(
-            "SELECT * FROM referral_links WHERE invite_link = ? AND active = 1 LIMIT 1",
+            "SELECT * FROM referral_links WHERE invite_link = ? LIMIT 1",
             (invite_link,),
         )
 

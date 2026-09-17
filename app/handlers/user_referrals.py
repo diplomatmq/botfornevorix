@@ -87,6 +87,13 @@ async def my_referrals(message: Message, repo: Repository):
         lines.append(
             f"{mark} {format_user_name(r)} — L{r['level']} — {format_subscription_end(r['subscription_end'])}"
         )
+    renewals = await repo.get_renewals_by_owner(uid)
+    if renewals:
+        lines.append("\n🔁 Продления по вашей ссылке:")
+        lines.extend(
+            f"• {format_user_name(renewal)} — {format_stars(int(renewal['amount']))}"
+            for renewal in renewals
+        )
     if len(lines) > 60:
         lines = lines[:60]
         lines.append("... показаны первые 60")

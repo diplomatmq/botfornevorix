@@ -7,7 +7,7 @@ from aiogram.types import Message
 
 from app.database.repo import Repository
 from app.handlers.common import ensure_user
-from app.utils.formatters import format_datetime
+from app.utils.formatters import format_datetime, format_user_name
 
 router = Router()
 
@@ -32,9 +32,9 @@ async def list_giveaways(message: Message, repo: Repository):
         if g["status"] == "ended" and g["winner_id"]:
             w = await repo.get_user_by_id(int(g["winner_id"]))
             if w:
-                winner_part = f"🏆 Победитель: @{w['username'] or 'id'+str(w['tg_id'])}\n"
+                winner_part = f"🏆 Победитель: {format_user_name(w)}\n"
             else:
-                winner_part = f"🏆 Победитель ID: {g['winner_id']}\n"
+                winner_part = "🏆 Победитель: пользователь недоступен\n"
         elif g["status"] == "active":
             winner_part = f"⏳ Завершение: {format_datetime(g['ends_at'])}\n"
         lines.append(

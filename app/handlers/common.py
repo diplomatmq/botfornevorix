@@ -40,13 +40,15 @@ async def _attach_referral(repo: Repository, user_db_id: int, link) -> None:
     user_row = await repo.get_user_by_id(user_db_id)
     if user_row and not user_row["subscription_end"]:
         await repo.activate_subscription(user_db_id, settings.SUBSCRIPTION_DAYS)
-        try:
+    try:
+        owner = await repo.get_user_by_id(owner_id)
+        if owner:
             await default_bot.send_message(
-                chat_id=(await repo.get_user_by_id(owner_id))["tg_id"],
-                text=f"🎁 +{settings.REF_BONUS} ⭐ за нового реферала!",
+                chat_id=int(owner["tg_id"]),
+                text=f"🎁 Новый реферал перешёл по вашей ссылке. Вам начислено +{settings.REF_BONUS} ⭐.",
             )
-        except Exception:
-            pass
+    except Exception:
+        pass
 
 
 async def handle_referral_invite(

@@ -159,3 +159,24 @@ def confirm_buy_ref_kb(ref_id: int) -> InlineKeyboardMarkup:
     )
     builder.adjust(1)
     return builder.as_markup()
+
+
+def lot_ref_selection_kb(refs, selected_ids: set[int]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for ref in refs:
+        ref_id = int(ref["ref_id"])
+        mark = "✅" if ref_id in selected_ids else "⬜"
+        builder.button(
+            text=f"{mark} {format_market_ref_name(ref)} · L{ref['level']}",
+            callback_data=LotCreateCallback(step="toggle", value=str(ref_id)).pack(),
+        )
+    builder.button(text="✅ Готово", callback_data=LotCreateCallback(step="done").pack())
+    builder.button(text="❌ Отмена", callback_data=LotCreateCallback(step="cancel").pack())
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def format_market_ref_name(ref) -> str:
+    username = ref["username"] if "username" in ref.keys() else None
+    full_name = ref["full_name"] if "full_name" in ref.keys() else "Пользователь"
+    return f"@{username}" if username else full_name

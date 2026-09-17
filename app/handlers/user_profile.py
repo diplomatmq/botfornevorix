@@ -22,7 +22,6 @@ async def my_profile(message: Message, repo: Repository):
     wins = int(u["wins"]) if "wins" in u.keys() else 0
     text = (
         "👤 <b>Ваш профиль</b>\n\n"
-        f"ID: <code>{u['tg_id']}</code>\n"
         f"Имя: {u['full_name']}\n"
         f"Баланс: {format_stars(int(u['balance']))}\n\n"
         f"🎖️ Текущий уровень: <b>L{u['level']}</b>\n"

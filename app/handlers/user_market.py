@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.database.repo import Repository
 from app.handlers.common import ensure_user, clear_state
+from app.loader import is_subscribed_to_channel
 from app.keyboards.user_kb import (
     MarketCallback,
     back_to_menu,
@@ -14,6 +15,8 @@ from app.keyboards.user_kb import (
     my_lots_kb,
     active_lots_kb,
     confirm_buy_ref_kb,
+    LotCreateCallback,
+    lot_ref_selection_kb,
 )
 from app.states.form_states import CreateLotState
 from app.utils.formatters import format_stars, format_user_name, format_subscription_end
@@ -126,6 +129,14 @@ async def buy_lot_cb(callback: CallbackQuery, callback_data: MarketCallback, rep
     if int(lot["seller_id"]) == uid:
         await callback.answer("Нельзя купить свой лот", show_alert=True)
         return
+    if not await is_subscribed_to_channel(bot, int(callback.from_user.id)):
+        await callback.answer("Для покупки нужна активная подписка на канал", show_alert=True)
+        return
+    items = await repo.get_lot_items(lot_id)
+    for item in items:
+        if not await is_subscribed_to_channel(bot, int(item["tg_id"])):
+            await callback.answer("В лоте есть реферал без активной подписки", show_alert=True)
+            return
     ok = await repo.buy_lot(lot_id, uid)
     if not ok:
         u = await repo.get_user_by_id(uid)
@@ -162,27 +173,75 @@ async def buy_lot_cb(callback: CallbackQuery, callback_data: MarketCallback, rep
 
 
 @router.callback_query(MarketCallback.filter(F.action == "create_lot"))
-async def create_lot_start_cb(callback: CallbackQuery, repo: Repository, state: FSMContext):
+async def create_lot_start_cb(callback: CallbackQuery, repo: Repository, state: FSMContext, bot: Bot):
     uid = await ensure_user(repo, callback)
     refs = await repo.get_referrals_by_owner(uid, include_on_market=False)
+    refs = [
+        ref for ref in refs
+        if await is_subscribed_to_channel(bot, int(ref["tg_id"]))
+    ]
     if not refs:
         await callback.answer(
             "У вас нет рефералов, доступных для продажи.",
             show_alert=True,
         )
         return
-    await state.set_state(CreateLotState.count)
-    await state.update_data(available_refs=[{"ref_id": int(r["ref_id"]), "tg_id": r["tg_id"]} for r in refs])
+    await state.set_state(CreateLotState.choosing_refs)
+    await state.update_data(
+        available_refs=[{key: ref[key] for key in ref.keys()} for ref in refs],
+        selected_ref_ids=[],
+    )
     lines = [
         f"💎 Доступно для продажи: {len(refs)} рефералов.",
-        "Введите, сколько выставить на продажу.",
-        "Будут выбраны первые рефералы из списка ниже:",
+        "Выберите рефералов, которых хотите продать:",
     ]
     for r in refs[:15]:
         lines.append(f"  • {format_user_name(r)} · L{r['level']}")
     if len(refs) > 15:
         lines.append(f"  ... и ещё {len(refs) - 15}")
-    await callback.message.edit_text("\n".join(lines), reply_markup=None)
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=lot_ref_selection_kb(refs, set()),
+    )
+    await callback.answer()
+
+
+@router.callback_query(LotCreateCallback.filter(F.step == "toggle"))
+async def toggle_lot_ref_cb(callback: CallbackQuery, callback_data: LotCreateCallback, state: FSMContext):
+    data = await state.get_data()
+    if await state.get_state() != CreateLotState.choosing_refs.state:
+        await callback.answer("Сценарий продажи уже завершён", show_alert=True)
+        return
+    selected = {int(ref_id) for ref_id in data.get("selected_ref_ids", [])}
+    ref_id = int(callback_data.value)
+    if ref_id in selected:
+        selected.remove(ref_id)
+    else:
+        selected.add(ref_id)
+    await state.update_data(selected_ref_ids=list(selected))
+    await callback.message.edit_reply_markup(
+        reply_markup=lot_ref_selection_kb(data.get("available_refs", []), selected)
+    )
+    await callback.answer()
+
+
+@router.callback_query(LotCreateCallback.filter(F.step == "done"))
+async def finish_lot_ref_selection_cb(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    selected = list(data.get("selected_ref_ids", []))
+    if not selected:
+        await callback.answer("Выберите хотя бы одного реферала", show_alert=True)
+        return
+    await state.update_data(count=len(selected), chosen_ref_ids=selected)
+    await state.set_state(CreateLotState.price)
+    await callback.message.edit_text("💸 Введите цену за 1 реферала (звёзд):")
+    await callback.answer()
+
+
+@router.callback_query(LotCreateCallback.filter(F.step == "cancel"))
+async def cancel_lot_creation_cb(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ Создание лота отменено.")
     await callback.answer()
 
 
@@ -215,9 +274,7 @@ async def lot_price_step(message: Message, state: FSMContext, repo: Repository):
         return
     data = await state.get_data()
     count = int(data["count"])
-    available = list(data.get("available_refs") or [])
-    chosen = available[:count]
-    ref_db_ids = [int(r["ref_id"]) for r in chosen]
+    ref_db_ids = [int(ref_id) for ref_id in data.get("chosen_ref_ids", [])]
     uid = await ensure_user(repo, message)
     levels = []
     for rid in ref_db_ids:
@@ -245,7 +302,7 @@ async def lot_price_step(message: Message, state: FSMContext, repo: Repository):
 
 @router.message(CreateLotState.confirm)
 async def lot_confirm_step(message: Message, state: FSMContext, repo: Repository):
-    text = message.text.strip().lower()
+    text = " ".join((message.text or "").split()).casefold()
     if text != "да":
         await state.clear()
         await message.answer("❌ Создание лота отменено.", reply_markup=back_to_menu())
@@ -291,7 +348,7 @@ async def active_lots_cb(callback: CallbackQuery, repo: Repository):
 
 
 @router.callback_query(MarketCallback.filter(F.action == "buy_ref"))
-async def buy_ref_cb(callback: CallbackQuery, callback_data: MarketCallback, repo: Repository):
+async def buy_ref_cb(callback: CallbackQuery, callback_data: MarketCallback, repo: Repository, bot: Bot):
     """Показать подтверждение покупки реферала"""
     uid = await ensure_user(repo, callback.message)
     ref_id = int(callback_data.ref_id)
@@ -303,6 +360,12 @@ async def buy_ref_cb(callback: CallbackQuery, callback_data: MarketCallback, rep
     
     if int(item["seller_id"]) == uid:
         await callback.answer("Это ваш реферал", show_alert=True)
+        return
+    if not await is_subscribed_to_channel(bot, int(item["tg_id"])):
+        await callback.answer("Этот реферал больше не подписан на канал", show_alert=True)
+        return
+    if not await is_subscribed_to_channel(bot, int(callback.from_user.id)):
+        await callback.answer("Для покупки нужна активная подписка на канал", show_alert=True)
         return
     
     price = int(item["price_per_one"])
@@ -336,6 +399,12 @@ async def confirm_buy_ref_cb(callback: CallbackQuery, callback_data: MarketCallb
     
     if int(item["seller_id"]) == uid:
         await callback.answer("❌ Нельзя купить своего реферала", show_alert=True)
+        return
+    if not await is_subscribed_to_channel(bot, int(item["tg_id"])):
+        await callback.answer("❌ Реферал больше не подписан на канал", show_alert=True)
+        return
+    if not await is_subscribed_to_channel(bot, int(callback.from_user.id)):
+        await callback.answer("❌ Для покупки нужна активная подписка на канал", show_alert=True)
         return
     
     # Проверяем баланс

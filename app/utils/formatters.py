@@ -15,12 +15,11 @@ def format_stars(n: int) -> str:
 def format_user_name(row) -> str:
     username = row["username"] if "username" in row.keys() else None
     full_name = row["full_name"] if "full_name" in row.keys() else ""
-    tg_id = row["tg_id"] if "tg_id" in row.keys() else row["id"]
     if username:
-        return f"@{username} (id{tg_id})"
+        return f"@{username}"
     if full_name:
-        return f"{full_name} (id{tg_id})"
-    return f"id{tg_id}"
+        return full_name
+    return "Пользователь"
 
 
 def _to_msk(dt: datetime) -> datetime:
