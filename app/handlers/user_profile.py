@@ -28,7 +28,7 @@ async def my_profile(message: Message, repo: Repository):
         f"🏆 Максимальный уровень: <b>L{u['max_level']}</b>\n"
         f"🥇 Победы в розыгрышах: <b>{wins}</b>\n"
         f"Подписка: {format_subscription_end(u['subscription_end'])}\n"
-        f"Присоединился: {format_datetime(u['created_at'])}\n\n"
+        f"Присоединился: {format_datetime(u['first_subscription_at'] or u['created_at'])}\n\n"
         f"👥 Рефералов приглашено: {refs}"
     )
     await message.answer(text, reply_markup=profile_kb(can_restore=can_restore))

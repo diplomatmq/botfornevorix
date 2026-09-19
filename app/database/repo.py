@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -38,6 +38,7 @@ class Repository:
         await self._migrate_giveaway_winners()
         await self._migrate_active_subscription_levels()
         await self._migrate_referral_market_flags()
+        await self._migrate_subscription_dates()
         await self.conn.commit()
         from app.database.migration import migrate_legacy_postgres
         await migrate_legacy_postgres(self)
@@ -67,6 +68,24 @@ class Repository:
     async def _migrate_referral_market_flags(self) -> None:
         await self.conn.execute(
             "UPDATE referrals SET on_market = 0 WHERE on_market IS NULL"
+        )
+
+    async def _migrate_subscription_dates(self) -> None:
+        await self.conn.execute(
+            """
+            UPDATE users
+            SET first_subscription_at = (
+                SELECT MIN(created_at)
+                FROM channel_subscription_updates
+                WHERE channel_subscription_updates.user_id = users.id
+            )
+            WHERE first_subscription_at IS NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM channel_subscription_updates
+                  WHERE channel_subscription_updates.user_id = users.id
+              )
+            """
         )
 
     async def _migrate_add_wins_column(self) -> None:
@@ -229,7 +248,6 @@ class Repository:
             return False
 
         now = datetime.utcnow()
-        on_time = current_end is not None and now <= current_end + timedelta(days=2)
         ref = await self.get_referral_by_referee(user_id)
         async with self.conn.cursor() as cur:
             await cur.execute("BEGIN")
@@ -245,12 +263,13 @@ class Repository:
                     "UPDATE users SET subscription_end = ?, first_subscription_at = COALESCE(first_subscription_at, ?) WHERE id = ?",
                     (new_end, now, user_id),
                 )
-                if ref and on_time:
-                    owner_id = int(ref["owner_id"])
+                if current_end is not None:
                     await cur.execute(
                         "UPDATE users SET level = level + 1, max_level = MAX(max_level, level + 1) WHERE id = ?",
                         (user_id,),
                     )
+                if ref and current_end is not None:
+                    owner_id = int(ref["owner_id"])
                     await cur.execute(
                         "UPDATE users SET balance = balance + ? WHERE id = ?",
                         (settings.RENEWAL_BONUS, owner_id),
