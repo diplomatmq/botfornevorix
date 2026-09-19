@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 
 from app.database.repo import Repository
 from app.utils.giveaways import run_giveaway
@@ -44,13 +45,21 @@ async def job_check_subscriptions(repo: Repository) -> None:
                 if referral:
                     owner = await repo.get_user_by_id(int(referral["owner_id"]))
                     if owner:
-                        await bot.send_message(
-                            chat_id=int(owner["tg_id"]),
-                            text=(
-                                f"🔁 {format_user_name(user)} продлил подписку.\n"
-                                f"Вам начислено {settings.RENEWAL_BONUS} ⭐."
-                            ),
-                        )
+                        try:
+                            await bot.send_message(
+                                chat_id=int(owner["tg_id"]),
+                                text=(
+                                    f"🔁 {format_user_name(user)} продлил подписку.\n"
+                                    f"Вам начислено {settings.RENEWAL_BONUS} ⭐."
+                                ),
+                            )
+                        except TelegramBadRequest as exc:
+                            logger.warning(
+                                "Could not notify referral owner %s (tg_id=%s): %s",
+                                owner["id"],
+                                owner["tg_id"],
+                                exc,
+                            )
                 logger.info("Recorded channel subscription update for user %s", user["id"])
         except Exception:
             logger.exception("Failed to check channel subscription for user %s", user["id"])
